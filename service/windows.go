@@ -14,6 +14,7 @@ import (
 	"github.com/doncicuto/openuem_nats"
 	"github.com/doncicuto/openuem_utils"
 	"github.com/go-co-op/gocron/v2"
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
@@ -90,7 +91,25 @@ func (us *UpdaterService) queueSubscribeForWindows() error {
 
 	log.Printf("[INFO]: Jetstream created and started consuming messages")
 
+	_, err = us.NATSConnection.QueueSubscribe("agent.restart."+us.AgentId, "openuem-agent-management", us.restartHandler)
+	if err != nil {
+		log.Printf("[ERROR]: could not subscribe to NATS message, reason: %v", err)
+		return err
+	}
+	log.Printf("[INFO]: subscribed to message agent.restart")
+
 	return nil
+}
+
+func (us *UpdaterService) restartHandler(msg *nats.Msg) {
+	if err := RestartService(); err != nil {
+		return
+	}
+	log.Println("[INFO]: agent has been forced to restart")
+
+	if err := msg.Respond(nil); err != nil {
+		log.Println("[ERROR]: could not respond to force restart request")
+	}
 }
 
 func (us *UpdaterService) updateHandlerForWindows(msg jetstream.Msg) {

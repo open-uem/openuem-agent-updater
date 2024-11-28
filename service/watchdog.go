@@ -46,15 +46,7 @@ func (us *UpdaterService) Watchdog() {
 
 	if restartRequired {
 		// Stop service
-		if err := openuem_utils.WindowsSvcControl("openuem-agent", svc.Stop, svc.Stopped); err != nil {
-			log.Printf("[ERROR]: could not stop openuem-agent service, reason: %v\n", err)
-			return
-		}
-
-		// Start service
-		if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
-			// TODO: communicate this situation to the agent worker so it can show a warning
-			log.Printf("[ERROR]: could not stop openuem-agent service, reason: %v\n", err)
+		if err := RestartService(); err != nil {
 			return
 		}
 
@@ -64,4 +56,21 @@ func (us *UpdaterService) Watchdog() {
 		}
 		log.Printf("[INFO]: the agent has been restarted due to watchdog")
 	}
+}
+
+func RestartService() error {
+	// Stop service
+	if err := openuem_utils.WindowsSvcControl("openuem-agent", svc.Stop, svc.Stopped); err != nil {
+		log.Printf("[ERROR]: could not stop openuem-agent service, reason: %v\n", err)
+		return err
+	}
+
+	// Start service
+	if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
+		// TODO: communicate this situation to the agent worker so it can show a warning
+		log.Printf("[ERROR]: could not stop openuem-agent service, reason: %v\n", err)
+		return err
+	}
+
+	return nil
 }
