@@ -28,6 +28,11 @@ func (us *UpdaterService) StartWindowsService() {
 	if err := us.StartNATSConnectJob(us.queueSubscribeForWindows); err != nil {
 		return
 	}
+
+	// Start Watchdog job
+	if err := us.StartWatchdogJob(); err != nil {
+		return
+	}
 }
 
 func (us *UpdaterService) StopWindowsService() {

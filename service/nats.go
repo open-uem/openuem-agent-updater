@@ -38,7 +38,7 @@ func (us *UpdaterService) StartNATSConnectJob(queueSubscribe func() error) error
 		gocron.NewTask(
 			func() {
 				if us.NATSConnection == nil {
-					us.NATSConnection, err = openuem_nats.ConnectWithNATSTOKEN(us.NATSServers, NATS_TOKEN)
+					us.NATSConnection, err = openuem_nats.ConnectWithNATS(us.NATSServers, clientCert, clientKey, caCert)
 					if err != nil {
 						log.Printf("[ERROR]: could not connect to NATS %v", err)
 						return

@@ -14,6 +14,7 @@ type UpdaterService struct {
 	AgentId                string
 	NATSConnection         *nats.Conn
 	NATSConnectJob         gocron.Job
+	WatchdogJob            gocron.Job
 	NATSServers            string
 	TaskScheduler          gocron.Scheduler
 	Logger                 *openuem_utils.OpenUEMLogger
