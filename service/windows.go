@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/doncicuto/openuem_nats"
@@ -16,6 +17,7 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"golang.org/x/mod/semver"
 	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
 )
@@ -53,6 +55,22 @@ func (us *UpdaterService) JetStreamUpdaterHandler(msg jetstream.Msg) {
 	if msg.Subject() == fmt.Sprintf("agentupdate.%s", us.AgentId) {
 		us.updateHandlerForWindows(msg)
 	}
+
+	if msg.Subject() == "agent.rollback.messenger" {
+		us.rollbackMessengerHandler(msg)
+	}
+
+	if msg.Subject() == "agent.update.messenger" {
+		us.updateMessengerHandler(msg)
+	}
+
+	if msg.Subject() == "agent.rollback.messenger" {
+		us.rollbackMessengerHandler(msg)
+	}
+
+	if msg.Subject() == "agent.rollback" {
+		us.AgentRollback(msg)
+	}
 }
 
 func (us *UpdaterService) queueSubscribeForWindows() error {
@@ -66,18 +84,17 @@ func (us *UpdaterService) queueSubscribeForWindows() error {
 	log.Println("[INFO]: JetStream has been instantiated")
 
 	ctx, us.JetstreamContextCancel = context.WithTimeout(context.Background(), 60*time.Minute)
-	s, err := js.CreateStream(ctx, jetstream.StreamConfig{
+	s, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:     "UPDATER_STREAM_" + us.AgentId,
-		Subjects: []string{fmt.Sprintf("agentupdate.%s", us.AgentId)},
+		Subjects: []string{"agentupdate." + us.AgentId, "agent.rollback.messenger." + us.AgentId, "agent.rollback." + us.AgentId},
 	})
 	if err != nil {
-		log.Printf("[ERROR]: could not create stream: %s\n", err.Error())
+		log.Printf("[ERROR]: could not create stream UPDATER_STREAM: %v\n", err)
 		return err
 	}
-	log.Println("[INFO]: stream has been created")
+	log.Println("[INFO]: UPDATER_STREAM stream has been created or updated")
 
 	c1, err := s.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
-		Durable:   "UpdaterConsumer",
 		AckPolicy: jetstream.AckExplicitPolicy,
 	})
 	if err != nil {
@@ -89,8 +106,12 @@ func (us *UpdaterService) queueSubscribeForWindows() error {
 		log.Printf("[ERROR]: consumer error: %s", err.Error())
 	}))
 
-	log.Printf("[INFO]: Jetstream created and started consuming messages")
+	log.Println("[INFO]: Jetstream created and started consuming messages")
+	log.Println("[INFO]: subscribed to message ", fmt.Sprintf("agentupdate.%s", us.AgentId))
+	log.Println("[INFO]: subscribed to message agent.update.messenger")
+	log.Println("[INFO]: subscribed to message agent.rollback.messenger")
 
+	// Subscribe to agent restart
 	_, err = us.NATSConnection.QueueSubscribe("agent.restart."+us.AgentId, "openuem-agent-management", us.restartHandler)
 	if err != nil {
 		log.Printf("[ERROR]: could not subscribe to NATS message, reason: %v", err)
@@ -99,6 +120,140 @@ func (us *UpdaterService) queueSubscribeForWindows() error {
 	log.Printf("[INFO]: subscribed to message agent.restart")
 
 	return nil
+}
+
+func (us *UpdaterService) updateMessengerHandler(msg jetstream.Msg) {
+	r := openuem_nats.OpenUEMRelease{}
+
+	cwd, err := openuem_utils.GetWd()
+	if err != nil {
+		log.Printf("[ERROR]: could get working directory, reason: %v", err)
+		return
+	}
+
+	if err := json.Unmarshal(msg.Data(), &r); err != nil {
+		log.Printf("[ERROR]: could not unmarshal release info, reason: %v", err)
+		return
+	}
+
+	if r.Version == "" {
+		log.Printf("[ERROR]: could not get latest version from update request, reason: %v", err)
+		return
+	}
+
+	downloadFrom := ""
+	downloadHash := ""
+	for _, f := range r.Files {
+		if f.Arch == runtime.GOARCH && f.Os == runtime.GOOS {
+			downloadFrom = f.FileURL
+			downloadHash = f.Checksum
+			break
+		}
+	}
+
+	if downloadFrom == "" || downloadHash == "" {
+		log.Printf("[ERROR]: could not get applicable download information from release, reason: %v", err)
+		return
+	}
+
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\OpenUEM\Agent`, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		log.Println("[ERROR]: agent cannot read the agent hive")
+		return
+	}
+	defer k.Close()
+
+	messengerVersion, _, err := k.GetStringValue("MessengerVersion")
+	if err != nil {
+		log.Println("[ERROR]: agent could not read MessengerVersion entry")
+	}
+
+	if semver.Compare("v"+messengerVersion, "v"+r.Version) < 0 {
+		downloadPath := filepath.Join(cwd, "updater", "messenger.exe")
+
+		// Download new messenger
+		if err := openuem_utils.DownloadFile(downloadFrom, downloadPath, downloadHash); err != nil {
+			log.Printf("[ERROR]: could not download new messenger to directory, reason %v\n", err)
+			return
+		}
+
+		// Preparing for rollback
+		messengerPath := filepath.Join(cwd, "openuem-messenger.exe")
+		messengerWasFound := true
+		if _, err := os.Stat(messengerPath); err != nil {
+			log.Printf("[ERROR]: could not find previous OpenUEM messenger, reason: %v\n", err)
+			messengerWasFound = false
+		}
+
+		if messengerWasFound {
+			// Rename old messenger
+			rollbackPath := filepath.Join(cwd, "updater", "messenger-rollback.exe")
+			if err := os.Rename(messengerPath, rollbackPath); err != nil {
+				log.Printf("[ERROR]: could not rename file for rollback, reason: %v", err)
+				return
+			}
+		}
+
+		// Rename messenger as the new exe
+		if err := os.Rename(downloadPath, messengerPath); err != nil {
+			log.Printf("[ERROR]: could not rename file for replacement, reason: %v", err)
+			return
+		}
+
+		err := k.SetStringValue("MessengerVersion", r.Version)
+		if err != nil {
+			log.Println("[ERROR]: agent could not save MessengerVersion entry")
+			return
+		}
+
+		log.Println("[INFO]: messenger has been updated")
+		return
+	}
+	log.Println("[INFO]: no need to update messenger")
+}
+
+func (us *UpdaterService) rollbackMessengerHandler(msg jetstream.Msg) {
+	cwd, err := openuem_utils.GetWd()
+	if err != nil {
+		log.Printf("[ERROR]: could get working directory, reason: %v", err)
+		if err := msg.Ack(); err != nil {
+			log.Printf("[ERROR]: could not send ACK for messenger rollback, reason: %v", err)
+		}
+		return
+	}
+
+	// We will keep the messenger version as updated in registry to prevent an update-rollback loop
+
+	// Preparing for rollback
+	messengerPath := filepath.Join(cwd, "openuem-messenger.exe")
+
+	rollbackPath := filepath.Join(cwd, "updater", "messenger-rollback.exe")
+	rollbackWasFound := true
+	if _, err := os.Stat(rollbackPath); err != nil {
+		log.Printf("[ERROR]: could not find previous OpenUEM messenger, reason: %v", err)
+		rollbackWasFound = false
+		if err := msg.Ack(); err != nil {
+			log.Printf("[ERROR]: could not send ACK for messenger rollback, reason: %v", err)
+		}
+		return
+	}
+
+	if rollbackWasFound {
+		// Rename old messenger
+		rollbackPath := filepath.Join(cwd, "updater", "messenger-rollback.exe")
+		if err := os.Rename(rollbackPath, messengerPath); err != nil {
+			log.Printf("[ERROR]: could not rename file from rollback, reason: %v", err)
+			if err := msg.Ack(); err != nil {
+				log.Printf("[ERROR]: could not send ACK for messenger rollback, reason: %v", err)
+			}
+			return
+		}
+	}
+
+	if err := msg.Ack(); err != nil {
+		log.Printf("[ERROR]: could not send ACK for messenger rollback, reason: %v", err)
+	}
+	log.Println("[INFO]: messenger has been rolled back")
 }
 
 func (us *UpdaterService) restartHandler(msg *nats.Msg) {
@@ -209,16 +364,13 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 	// Stop service
 	if err := openuem_utils.WindowsSvcControl("openuem-agent", svc.Stop, svc.Stopped); err != nil {
 		log.Printf("[ERROR]: %v", err)
-		msg.NakWithDelay(15 * time.Minute)
-		SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
-		return
 	}
 
 	// Preparing for rollback
 	agentPath := filepath.Join(cwd, "openuem-agent.exe")
 	agentWasFound := true
 	if _, err := os.Stat(agentPath); err != nil {
-		log.Printf("[ERROR]: could not find previous OpenUEM Agent, reason %v", err)
+		log.Printf("[WARN]: could not find previous OpenUEM Agent, reason %v", err)
 		agentWasFound = false
 	}
 
@@ -272,6 +424,56 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 	SaveTaskInfoToRegistry(openuem_nats.UPDATE_SUCCESS, "OpenUEM Agent was installed and started")
 	log.Println("[INFO]: new OpenUEM Agent was installed and started")
 
+}
+
+func (us *UpdaterService) AgentRollback(msg jetstream.Msg) {
+	cwd, err := openuem_utils.GetWd()
+	if err != nil {
+		if err := msg.Ack(); err != nil {
+			log.Printf("[ERROR]: could not send ACK for every agent rollback, reason: %v", err)
+		}
+		return
+	}
+
+	rollbackPath := filepath.Join(cwd, "updater", "rollback.exe")
+	agentPath := filepath.Join(cwd, "openuem-agent.exe")
+
+	// Preparing for rollback
+	if _, err := os.Stat(rollbackPath); err != nil {
+		log.Printf("[ERROR]: could not find previous OpenUEM Agent, reason %v", err)
+		if err := msg.Ack(); err != nil {
+			log.Printf("[ERROR]: could not send ACK for every agent rollback, reason: %v", err)
+		}
+		return
+	}
+
+	// Stop service
+	if err := openuem_utils.WindowsSvcControl("openuem-agent", svc.Stop, svc.Stopped); err != nil {
+		log.Printf("[ERROR]: could not stop openuem-agent service, reason: %v", err)
+	}
+
+	// Rename rollback agent to agent
+	if err := os.Rename(rollbackPath, agentPath); err != nil {
+		log.Printf("[ERROR]: could not overwrite agent executable with rollback, reason: %v", err)
+		if err := msg.Ack(); err != nil {
+			log.Printf("[ERROR]: could not send ACK for every agent rollback, reason: %v", err)
+		}
+		return
+	}
+
+	// Start service
+	if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
+		log.Printf("[ERROR]: could not start new agent service using rollback, reason: %v", err)
+		if err := msg.Ack(); err != nil {
+			log.Printf("[ERROR]: could not send ACK for every agent rollback, reason: %v", err)
+		}
+		return
+	}
+
+	log.Println("[INFO]: OpenUEM Agent was rolled back")
+	if err := msg.Ack(); err != nil {
+		log.Printf("[ERROR]: could not send ACK for every agent rollback, reason: %v", err)
+	}
 }
 
 func (us *UpdaterService) ReadWindowsConfig() error {
