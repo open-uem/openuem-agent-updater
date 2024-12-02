@@ -85,14 +85,14 @@ func (us *UpdaterService) queueSubscribeForWindows() error {
 
 	ctx, us.JetstreamContextCancel = context.WithTimeout(context.Background(), 60*time.Minute)
 	s, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:     "UPDATER_STREAM_" + us.AgentId,
+		Name:     "AGENT_UPDATER_STREAM_" + us.AgentId,
 		Subjects: []string{"agentupdate." + us.AgentId, "agent.rollback.messenger." + us.AgentId, "agent.rollback." + us.AgentId},
 	})
 	if err != nil {
-		log.Printf("[ERROR]: could not create stream UPDATER_STREAM: %v\n", err)
+		log.Printf("[ERROR]: could not create stream AGENT_UPDATER_STREAM_: %v\n", err)
 		return err
 	}
-	log.Println("[INFO]: UPDATER_STREAM stream has been created or updated")
+	log.Println("[INFO]: AGENT_UPDATER_STREAM_ stream has been created or updated")
 
 	c1, err := s.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
 		AckPolicy: jetstream.AckExplicitPolicy,
