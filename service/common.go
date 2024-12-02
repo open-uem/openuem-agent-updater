@@ -24,7 +24,7 @@ type UpdaterService struct {
 func NewUpdateService() (*UpdaterService, error) {
 	var err error
 	us := UpdaterService{}
-	us.Logger = openuem_utils.NewLogger("openuem-updater-service.txt")
+	us.Logger = openuem_utils.NewLogger("openuem-agent-updater.txt")
 
 	us.TaskScheduler, err = gocron.NewScheduler()
 	if err != nil {

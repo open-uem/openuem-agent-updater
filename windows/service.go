@@ -5,7 +5,7 @@ package main
 import (
 	"log"
 
-	"github.com/doncicuto/openuem-updater-service/service"
+	"github.com/doncicuto/openuem-agent-updater/service"
 	"github.com/doncicuto/openuem_utils"
 	"golang.org/x/sys/windows/svc"
 )
@@ -25,7 +25,7 @@ func main() {
 	ws.ServiceStop = us.StopWindowsService
 
 	// Run service
-	err = svc.Run("openuem-updater-service", ws)
+	err = svc.Run("openuem-agent-updater", ws)
 	if err != nil {
 		log.Printf("[ERROR]: could not run service: %v", err)
 	}
