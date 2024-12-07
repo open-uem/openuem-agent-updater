@@ -1,6 +1,6 @@
 //go:build windows
 
-package service
+package common
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"github.com/doncicuto/openuem_nats"
@@ -17,9 +16,8 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"golang.org/x/mod/semver"
-	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
+	"gopkg.in/ini.v1"
 )
 
 func (us *UpdaterService) StartWindowsService() {
@@ -55,22 +53,6 @@ func (us *UpdaterService) JetStreamUpdaterHandler(msg jetstream.Msg) {
 	if msg.Subject() == fmt.Sprintf("agentupdate.%s", us.AgentId) {
 		us.updateHandlerForWindows(msg)
 	}
-
-	if msg.Subject() == "agent.rollback.messenger" {
-		us.rollbackMessengerHandler(msg)
-	}
-
-	if msg.Subject() == "agent.update.messenger" {
-		us.updateMessengerHandler(msg)
-	}
-
-	if msg.Subject() == "agent.rollback.messenger" {
-		us.rollbackMessengerHandler(msg)
-	}
-
-	if msg.Subject() == "agent.rollback" {
-		us.AgentRollback(msg)
-	}
 }
 
 func (us *UpdaterService) queueSubscribeForWindows() error {
@@ -84,18 +66,15 @@ func (us *UpdaterService) queueSubscribeForWindows() error {
 	log.Println("[INFO]: JetStream has been instantiated")
 
 	ctx, us.JetstreamContextCancel = context.WithTimeout(context.Background(), 60*time.Minute)
-	s, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:     "AGENT_UPDATER_STREAM_" + us.AgentId,
-		Subjects: []string{"agentupdate." + us.AgentId, "agent.rollback.messenger." + us.AgentId, "agent.rollback." + us.AgentId},
-	})
+	s, err := js.Stream(ctx, "AGENTS_STREAM")
 	if err != nil {
-		log.Printf("[ERROR]: could not create stream AGENT_UPDATER_STREAM_: %v\n", err)
+		log.Printf("[ERROR]: could not create stream AGENTS_STREAM: %v\n", err)
 		return err
 	}
-	log.Println("[INFO]: AGENT_UPDATER_STREAM_ stream has been created or updated")
 
 	c1, err := s.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
-		AckPolicy: jetstream.AckExplicitPolicy,
+		Durable:        "AgentUpdater" + us.AgentId,
+		FilterSubjects: []string{"agent.update." + us.AgentId},
 	})
 	if err != nil {
 		log.Printf("[ERROR]: could not create Jetstream consumer: %s", err.Error())
@@ -108,8 +87,6 @@ func (us *UpdaterService) queueSubscribeForWindows() error {
 
 	log.Println("[INFO]: Jetstream created and started consuming messages")
 	log.Println("[INFO]: subscribed to message ", fmt.Sprintf("agentupdate.%s", us.AgentId))
-	log.Println("[INFO]: subscribed to message agent.update.messenger")
-	log.Println("[INFO]: subscribed to message agent.rollback.messenger")
 
 	// Subscribe to agent restart
 	_, err = us.NATSConnection.QueueSubscribe("agent.restart."+us.AgentId, "openuem-agent-management", us.restartHandler)
@@ -120,140 +97,6 @@ func (us *UpdaterService) queueSubscribeForWindows() error {
 	log.Printf("[INFO]: subscribed to message agent.restart")
 
 	return nil
-}
-
-func (us *UpdaterService) updateMessengerHandler(msg jetstream.Msg) {
-	r := openuem_nats.OpenUEMRelease{}
-
-	cwd, err := openuem_utils.GetWd()
-	if err != nil {
-		log.Printf("[ERROR]: could get working directory, reason: %v", err)
-		return
-	}
-
-	if err := json.Unmarshal(msg.Data(), &r); err != nil {
-		log.Printf("[ERROR]: could not unmarshal release info, reason: %v", err)
-		return
-	}
-
-	if r.Version == "" {
-		log.Printf("[ERROR]: could not get latest version from update request, reason: %v", err)
-		return
-	}
-
-	downloadFrom := ""
-	downloadHash := ""
-	for _, f := range r.Files {
-		if f.Arch == runtime.GOARCH && f.Os == runtime.GOOS {
-			downloadFrom = f.FileURL
-			downloadHash = f.Checksum
-			break
-		}
-	}
-
-	if downloadFrom == "" || downloadHash == "" {
-		log.Printf("[ERROR]: could not get applicable download information from release, reason: %v", err)
-		return
-	}
-
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\OpenUEM\Agent`, registry.QUERY_VALUE|registry.SET_VALUE)
-	if err != nil {
-		log.Println("[ERROR]: agent cannot read the agent hive")
-		return
-	}
-	defer k.Close()
-
-	messengerVersion, _, err := k.GetStringValue("MessengerVersion")
-	if err != nil {
-		log.Println("[ERROR]: agent could not read MessengerVersion entry")
-	}
-
-	if semver.Compare("v"+messengerVersion, "v"+r.Version) < 0 {
-		downloadPath := filepath.Join(cwd, "updater", "messenger.exe")
-
-		// Download new messenger
-		if err := openuem_utils.DownloadFile(downloadFrom, downloadPath, downloadHash); err != nil {
-			log.Printf("[ERROR]: could not download new messenger to directory, reason %v\n", err)
-			return
-		}
-
-		// Preparing for rollback
-		messengerPath := filepath.Join(cwd, "openuem-messenger.exe")
-		messengerWasFound := true
-		if _, err := os.Stat(messengerPath); err != nil {
-			log.Printf("[ERROR]: could not find previous OpenUEM messenger, reason: %v\n", err)
-			messengerWasFound = false
-		}
-
-		if messengerWasFound {
-			// Rename old messenger
-			rollbackPath := filepath.Join(cwd, "updater", "messenger-rollback.exe")
-			if err := os.Rename(messengerPath, rollbackPath); err != nil {
-				log.Printf("[ERROR]: could not rename file for rollback, reason: %v", err)
-				return
-			}
-		}
-
-		// Rename messenger as the new exe
-		if err := os.Rename(downloadPath, messengerPath); err != nil {
-			log.Printf("[ERROR]: could not rename file for replacement, reason: %v", err)
-			return
-		}
-
-		err := k.SetStringValue("MessengerVersion", r.Version)
-		if err != nil {
-			log.Println("[ERROR]: agent could not save MessengerVersion entry")
-			return
-		}
-
-		log.Println("[INFO]: messenger has been updated")
-		return
-	}
-	log.Println("[INFO]: no need to update messenger")
-}
-
-func (us *UpdaterService) rollbackMessengerHandler(msg jetstream.Msg) {
-	cwd, err := openuem_utils.GetWd()
-	if err != nil {
-		log.Printf("[ERROR]: could get working directory, reason: %v", err)
-		if err := msg.Ack(); err != nil {
-			log.Printf("[ERROR]: could not send ACK for messenger rollback, reason: %v", err)
-		}
-		return
-	}
-
-	// We will keep the messenger version as updated in registry to prevent an update-rollback loop
-
-	// Preparing for rollback
-	messengerPath := filepath.Join(cwd, "openuem-messenger.exe")
-
-	rollbackPath := filepath.Join(cwd, "updater", "messenger-rollback.exe")
-	rollbackWasFound := true
-	if _, err := os.Stat(rollbackPath); err != nil {
-		log.Printf("[ERROR]: could not find previous OpenUEM messenger, reason: %v", err)
-		rollbackWasFound = false
-		if err := msg.Ack(); err != nil {
-			log.Printf("[ERROR]: could not send ACK for messenger rollback, reason: %v", err)
-		}
-		return
-	}
-
-	if rollbackWasFound {
-		// Rename old messenger
-		rollbackPath := filepath.Join(cwd, "updater", "messenger-rollback.exe")
-		if err := os.Rename(rollbackPath, messengerPath); err != nil {
-			log.Printf("[ERROR]: could not rename file from rollback, reason: %v", err)
-			if err := msg.Ack(); err != nil {
-				log.Printf("[ERROR]: could not send ACK for messenger rollback, reason: %v", err)
-			}
-			return
-		}
-	}
-
-	if err := msg.Ack(); err != nil {
-		log.Printf("[ERROR]: could not send ACK for messenger rollback, reason: %v", err)
-	}
-	log.Println("[INFO]: messenger has been rolled back")
 }
 
 func (us *UpdaterService) restartHandler(msg *nats.Msg) {
@@ -273,7 +116,7 @@ func (us *UpdaterService) updateHandlerForWindows(msg jetstream.Msg) {
 	if err := json.Unmarshal(msg.Data(), &data); err != nil {
 		log.Printf("[ERROR]: could not unmarshal update request, reason: %v\n", err)
 		msg.NakWithDelay(60 * time.Minute)
-		SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not unmarshal update request, reason: %v", err))
+		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not unmarshal update request, reason: %v", err))
 		return
 	}
 
@@ -295,7 +138,7 @@ func (us *UpdaterService) updateHandlerForWindows(msg jetstream.Msg) {
 		); err != nil {
 			log.Printf("[ERROR]: could not schedule the update task: %v\n", err)
 			msg.NakWithDelay(60 * time.Minute)
-			SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not schedule the update task: %v", err))
+			SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not schedule the update task: %v", err))
 			return
 		}
 		log.Println("[INFO]: new update task will run now")
@@ -309,7 +152,7 @@ func (us *UpdaterService) updateHandlerForWindows(msg jetstream.Msg) {
 			); err != nil {
 				log.Printf("[ERROR]: could not schedule the update task: %v\n", err)
 				msg.NakWithDelay(60 * time.Minute)
-				SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not schedule the update task: %v", err))
+				SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not schedule the update task: %v", err))
 				return
 			}
 			log.Printf("[INFO]: new update task scheduled a %s", data.UpdateAt.String())
@@ -318,28 +161,31 @@ func (us *UpdaterService) updateHandlerForWindows(msg jetstream.Msg) {
 
 	if err := msg.Ack(); err != nil {
 		log.Printf("[ERROR]: could not sent ACK, reason: %v", err)
-		SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not sent ACK, reason: %v", err))
+		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not sent ACK, reason: %v", err))
 		return
 	}
 
 	return
 }
 
-func SaveTaskInfoToRegistry(status, result string) {
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\OpenUEM\Agent`, registry.SET_VALUE)
-	if err != nil {
-		log.Println("[ERROR]: agent cannot read the agent hive")
-	}
-	defer k.Close()
+func SaveTaskInfoToINI(status, result string) {
 
-	if err := k.SetStringValue("UpdaterLastExecutionTime", time.Now().Local().Format("2006-01-02T15:04:05")); err != nil {
-		log.Printf("[ERROR]: could not save execution time to the registry")
+	// Get conf file
+	configFile := openuem_utils.GetConfigFile()
+
+	// Open ini file
+	cfg, err := ini.Load(configFile)
+	if err != nil {
+		log.Println("[ERROR]: could not load config file")
+		return
 	}
-	if err := k.SetStringValue("UpdaterLastExecutionStatus", status); err != nil {
-		log.Printf("[ERROR]: could not save execution status to the registry")
-	}
-	if err := k.SetStringValue("UpdaterLastExecutionResult", result); err != nil {
-		log.Printf("[ERROR]: could not save execution result to the registry")
+
+	cfg.Section("Agent").Key("UpdaterLastExecutionTime").SetValue(time.Now().Local().Format("2006-01-02T15:04:05"))
+	cfg.Section("Agent").Key("UpdaterLastExecutionStatus").SetValue(status)
+	cfg.Section("Agent").Key("UpdaterLastExecutionResult").SetValue(result)
+	if err := cfg.SaveTo(configFile); err != nil {
+		log.Println("[ERROR]: could not save update task info to INI file")
+		return
 	}
 }
 
@@ -349,7 +195,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 	if err != nil {
 		log.Printf("[ERROR]: could not get working directory, reason %v", err)
 		msg.NakWithDelay(60 * time.Minute)
-		SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not get working directory, reason %v", err))
+		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not get working directory, reason %v", err))
 		return
 	}
 
@@ -357,7 +203,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 	if err := openuem_utils.DownloadFile(data.DownloadFrom, downloadPath, data.DownloadHash); err != nil {
 		log.Printf("[ERROR]: could not download update to directory, reason %v", err)
 		msg.NakWithDelay(60 * time.Minute)
-		SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not download update to directory, reason %v\n", err))
+		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not download update to directory, reason %v\n", err))
 		return
 	}
 
@@ -380,7 +226,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 		if err := os.Rename(agentPath, rollbackPath); err != nil {
 			log.Printf("[ERROR]: %v", err)
 			msg.NakWithDelay(60 * time.Minute)
-			SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
+			SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
 			return
 		}
 	}
@@ -389,7 +235,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 	if err := os.Rename(downloadPath, agentPath); err != nil {
 		log.Printf("[ERROR]: %v", err)
 		msg.NakWithDelay(60 * time.Minute)
-		SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
+		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
 		return
 	}
 
@@ -402,7 +248,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 			if err := os.Rename(rollbackPath, agentPath); err != nil {
 				log.Printf("[ERROR]: %v", err)
 				msg.NakWithDelay(15 * time.Minute)
-				SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
+				SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
 				return
 			}
 
@@ -410,18 +256,18 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 			if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
 				log.Printf("[FATAL]: %v", err)
 				msg.NakWithDelay(15 * time.Minute)
-				SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
+				SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
 				return
 			}
 		} else {
 			log.Printf("[FATAL]: %v", err)
 			msg.NakWithDelay(15 * time.Minute)
-			SaveTaskInfoToRegistry(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
+			SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
 			return
 		}
 	}
 
-	SaveTaskInfoToRegistry(openuem_nats.UPDATE_SUCCESS, "OpenUEM Agent was installed and started")
+	SaveTaskInfoToINI(openuem_nats.UPDATE_SUCCESS, "OpenUEM Agent was installed and started")
 	log.Println("[INFO]: new OpenUEM Agent was installed and started")
 
 }
@@ -479,22 +325,64 @@ func (us *UpdaterService) AgentRollback(msg jetstream.Msg) {
 func (us *UpdaterService) ReadWindowsConfig() error {
 	var err error
 
-	k, err := openuem_utils.OpenRegistryForQuery(registry.LOCAL_MACHINE, `SOFTWARE\OpenUEM\Agent`)
+	// Get conf file
+	configFile := openuem_utils.GetConfigFile()
+
+	// Open ini file
+	cfg, err := ini.Load(configFile)
 	if err != nil {
-		log.Println("[ERROR]: could not open registry")
 		return err
 	}
-	defer k.Close()
 
-	us.NATSServers, err = openuem_utils.GetValueFromRegistry(k, "NATSServers")
+	key, err := cfg.Section("Agent").GetKey("UUID")
 	if err != nil {
-		return fmt.Errorf("could not read NATS servers from registry")
+		log.Println("[ERROR]: could not get UUID")
+		return err
 	}
+	us.AgentId = key.String()
 
-	us.AgentId, err = openuem_utils.GetValueFromRegistry(k, "UUID")
+	key, err = cfg.Section("NATS").GetKey("NATSServers")
 	if err != nil {
-		return fmt.Errorf("could not read NATS servers from registry")
+		log.Println("[ERROR]: could not get NATSServers")
+		return err
 	}
+	us.NATSServers = key.String()
+
+	key, err = cfg.Section("Certificates").GetKey("CACert")
+	if err != nil {
+		log.Println("[ERROR]: could not get CACert path")
+		return err
+	}
+	_, err = openuem_utils.ReadPEMCertificate(key.String())
+	if err != nil {
+		log.Println("[ERROR]: could not read CACert file")
+		return err
+	}
+	us.CACert = key.String()
+
+	key, err = cfg.Section("Certificates").GetKey("AgentCert")
+	if err != nil {
+		log.Println("[ERROR]: could not get Agent Cert path")
+		return err
+	}
+	_, err = openuem_utils.ReadPEMCertificate(key.String())
+	if err != nil {
+		log.Println("[ERROR]: could not read Agent cert file")
+		return err
+	}
+	us.AgentCert = key.String()
+
+	key, err = cfg.Section("Certificates").GetKey("AgentKey")
+	if err != nil {
+		log.Println("[ERROR]: could not get Agent Key path")
+		return err
+	}
+	_, err = openuem_utils.ReadPEMPrivateKey(key.String())
+	if err != nil {
+		log.Println("[ERROR]: could not read Agent key file")
+		return err
+	}
+	us.AgentKey = key.String()
 
 	return nil
 }

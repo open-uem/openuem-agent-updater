@@ -1,4 +1,4 @@
-package service
+package common
 
 import (
 	"fmt"
@@ -7,8 +7,8 @@ import (
 
 	"github.com/doncicuto/openuem_utils"
 	"github.com/go-co-op/gocron/v2"
-	"golang.org/x/sys/windows/registry"
 	"golang.org/x/sys/windows/svc"
+	"gopkg.in/ini.v1"
 )
 
 func (us *UpdaterService) StartWatchdogJob() error {
@@ -33,15 +33,21 @@ func (us *UpdaterService) Watchdog() {
 	var err error
 	var restartRequired bool
 
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `SOFTWARE\OpenUEM\Agent`, registry.QUERY_VALUE|registry.SET_VALUE)
-	if err != nil {
-		log.Println("[ERROR]: agent cannot read the agent hive")
-	}
-	defer k.Close()
+	// Get conf file
+	configFile := openuem_utils.GetConfigFile()
 
-	restartValue, _, err := k.GetIntegerValue("RestartRequired")
-	if err == nil {
-		restartRequired = restartValue == 1
+	// Open ini file
+	cfg, err := ini.Load(configFile)
+	if err != nil {
+		log.Println("[ERROR]: could not load config file")
+		return
+	}
+
+	key, err := cfg.Section("Agent").GetKey("RestartRequired")
+	restartRequired, err = key.Bool()
+	if err != nil {
+		log.Println("[ERROR]: could not parse RestartRequired")
+		return
 	}
 
 	if restartRequired {
@@ -50,9 +56,9 @@ func (us *UpdaterService) Watchdog() {
 			return
 		}
 
-		// Reset value in registry
-		if err := k.SetDWordValue("RestartRequired", 0); err != nil {
-			log.Printf("[ERROR]: could not save RestartRequired to the registry")
+		cfg.Section("Agent").Key("RestartRequired").SetValue("false")
+		if err := cfg.SaveTo(configFile); err != nil {
+			log.Printf("[ERROR]: could not save RestartRequired to INI")
 		}
 		log.Printf("[INFO]: the agent has been restarted due to watchdog")
 	}

@@ -1,28 +1,18 @@
-package service
+package common
 
 import (
 	"fmt"
 	"log"
-	"path/filepath"
 	"time"
 
 	"github.com/doncicuto/openuem_nats"
-	"github.com/doncicuto/openuem_utils"
 	"github.com/go-co-op/gocron/v2"
 )
 
 func (us *UpdaterService) StartNATSConnectJob(queueSubscribe func() error) error {
 	var err error
 
-	cwd, err := openuem_utils.GetWd()
-	if err != nil {
-		return err
-	}
-	clientCert := filepath.Join(cwd, "certificates", "agent.cer")
-	clientKey := filepath.Join(cwd, "certificates", "agent.key")
-	caCert := filepath.Join(cwd, "certificates", "ca.cer")
-
-	us.NATSConnection, err = openuem_nats.ConnectWithNATS(us.NATSServers, clientCert, clientKey, caCert)
+	us.NATSConnection, err = openuem_nats.ConnectWithNATS(us.NATSServers, us.AgentCert, us.AgentKey, us.CACert)
 	if err == nil {
 		if err := queueSubscribe(); err == nil {
 			return err
@@ -38,7 +28,7 @@ func (us *UpdaterService) StartNATSConnectJob(queueSubscribe func() error) error
 		gocron.NewTask(
 			func() {
 				if us.NATSConnection == nil {
-					us.NATSConnection, err = openuem_nats.ConnectWithNATS(us.NATSServers, clientCert, clientKey, caCert)
+					us.NATSConnection, err = openuem_nats.ConnectWithNATS(us.NATSServers, us.AgentCert, us.AgentKey, us.CACert)
 					if err != nil {
 						log.Printf("[ERROR]: could not connect to NATS %v", err)
 						return

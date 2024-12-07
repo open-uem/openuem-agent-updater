@@ -1,4 +1,4 @@
-package service
+package common
 
 import (
 	"context"
@@ -7,8 +7,6 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"github.com/nats-io/nats.go"
 )
-
-const NATS_TOKEN = "OpenUEM"
 
 type UpdaterService struct {
 	AgentId                string
@@ -19,6 +17,9 @@ type UpdaterService struct {
 	TaskScheduler          gocron.Scheduler
 	Logger                 *openuem_utils.OpenUEMLogger
 	JetstreamContextCancel context.CancelFunc
+	AgentCert              string
+	AgentKey               string
+	CACert                 string
 }
 
 func NewUpdateService() (*UpdaterService, error) {

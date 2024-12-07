@@ -5,13 +5,13 @@ package main
 import (
 	"log"
 
-	"github.com/doncicuto/openuem-agent-updater/service"
+	"github.com/doncicuto/openuem-agent-updater/internal/common"
 	"github.com/doncicuto/openuem_utils"
 	"golang.org/x/sys/windows/svc"
 )
 
 func main() {
-	us, err := service.NewUpdateService()
+	us, err := common.NewUpdateService()
 	if err != nil {
 		log.Fatalf("[FATAL]: could not create task scheduler, reason: %s", err.Error())
 	}

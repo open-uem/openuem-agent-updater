@@ -11,8 +11,8 @@ require (
 	github.com/doncicuto/openuem_utils v0.0.0-00010101000000-000000000000
 	github.com/go-co-op/gocron/v2 v2.12.3
 	github.com/nats-io/nats.go v1.37.0
-	golang.org/x/mod v0.22.0
 	golang.org/x/sys v0.26.0
+	gopkg.in/ini.v1 v1.67.0
 )
 
 require (
@@ -26,5 +26,4 @@ require (
 	golang.org/x/crypto v0.18.0 // indirect
 	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	gopkg.in/ini.v1 v1.67.0 // indirect
 )
