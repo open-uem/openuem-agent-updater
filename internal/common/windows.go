@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -50,7 +51,7 @@ func (us *UpdaterService) StopWindowsService() {
 }
 
 func (us *UpdaterService) JetStreamUpdaterHandler(msg jetstream.Msg) {
-	if msg.Subject() == fmt.Sprintf("agentupdate.%s", us.AgentId) {
+	if msg.Subject() == fmt.Sprintf("agent.update.%s", us.AgentId) {
 		us.updateHandlerForWindows(msg)
 	}
 }
@@ -86,7 +87,7 @@ func (us *UpdaterService) queueSubscribeForWindows() error {
 	}))
 
 	log.Println("[INFO]: Jetstream created and started consuming messages")
-	log.Println("[INFO]: subscribed to message ", fmt.Sprintf("agentupdate.%s", us.AgentId))
+	log.Println("[INFO]: subscribed to message ", fmt.Sprintf("agent.update.%s", us.AgentId))
 
 	// Subscribe to agent restart
 	_, err = us.NATSConnection.QueueSubscribe("agent.restart."+us.AgentId, "openuem-agent-management", us.restartHandler)
@@ -199,7 +200,8 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 		return
 	}
 
-	downloadPath := filepath.Join(cwd, "updater", "download.exe")
+	// TODO - find a better place to save the agent installer and manage certificate location
+	downloadPath := filepath.Join(cwd, "certificates", "download.exe")
 	if err := openuem_utils.DownloadFile(data.DownloadFrom, downloadPath, data.DownloadHash); err != nil {
 		log.Printf("[ERROR]: could not download update to directory, reason %v", err)
 		msg.NakWithDelay(60 * time.Minute)
@@ -212,64 +214,16 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 		log.Printf("[ERROR]: %v", err)
 	}
 
-	// Preparing for rollback
-	agentPath := filepath.Join(cwd, "openuem-agent.exe")
-	agentWasFound := true
-	if _, err := os.Stat(agentPath); err != nil {
-		log.Printf("[WARN]: could not find previous OpenUEM Agent, reason %v", err)
-		agentWasFound = false
-	}
+	SaveTaskInfoToINI(openuem_nats.UPDATE_SUCCESS, "")
+	log.Println("[INFO]: new OpenUEM Agent update command was called", downloadPath)
+	msg.Ack()
 
-	if agentWasFound {
-		// Rename old agent
-		rollbackPath := filepath.Join(cwd, "updater", "rollback.exe")
-		if err := os.Rename(agentPath, rollbackPath); err != nil {
-			log.Printf("[ERROR]: %v", err)
-			msg.NakWithDelay(60 * time.Minute)
-			SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
-			return
-		}
-	}
-
-	// Rename downloaded agent as the new exe
-	if err := os.Rename(downloadPath, agentPath); err != nil {
-		log.Printf("[ERROR]: %v", err)
-		msg.NakWithDelay(60 * time.Minute)
-		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
+	cmd := exec.Command(downloadPath, "/VERYSILENT")
+	err = cmd.Start()
+	if err != nil {
+		log.Printf("[ERROR]: could not run %s command, reason: %v", downloadPath, err)
 		return
 	}
-
-	// Start service
-	if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
-		// We couldn't start service maybe we should rollback
-		// but only if we had a previous exe
-		if agentWasFound {
-			rollbackPath := filepath.Join(cwd, "openuem-agent.exe")
-			if err := os.Rename(rollbackPath, agentPath); err != nil {
-				log.Printf("[ERROR]: %v", err)
-				msg.NakWithDelay(15 * time.Minute)
-				SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
-				return
-			}
-
-			// try to start this exe now
-			if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
-				log.Printf("[FATAL]: %v", err)
-				msg.NakWithDelay(15 * time.Minute)
-				SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
-				return
-			}
-		} else {
-			log.Printf("[FATAL]: %v", err)
-			msg.NakWithDelay(15 * time.Minute)
-			SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("%v", err))
-			return
-		}
-	}
-
-	SaveTaskInfoToINI(openuem_nats.UPDATE_SUCCESS, "OpenUEM Agent was installed and started")
-	log.Println("[INFO]: new OpenUEM Agent was installed and started")
-
 }
 
 func (us *UpdaterService) AgentRollback(msg jetstream.Msg) {
@@ -348,41 +302,29 @@ func (us *UpdaterService) ReadWindowsConfig() error {
 	}
 	us.NATSServers = key.String()
 
-	key, err = cfg.Section("Certificates").GetKey("CACert")
+	// Read required certificates and private key
+	cwd, err := openuem_utils.GetWd()
 	if err != nil {
-		log.Println("[ERROR]: could not get CACert path")
-		return err
+		log.Fatalf("[FATAL]: could not get current working directory")
 	}
-	_, err = openuem_utils.ReadPEMCertificate(key.String())
-	if err != nil {
-		log.Println("[ERROR]: could not read CACert file")
-		return err
-	}
-	us.CACert = key.String()
 
-	key, err = cfg.Section("Certificates").GetKey("AgentCert")
+	us.AgentCert = filepath.Join(cwd, "certificates", "agent.cer")
+	_, err = openuem_utils.ReadPEMCertificate(us.AgentCert)
 	if err != nil {
-		log.Println("[ERROR]: could not get Agent Cert path")
-		return err
+		log.Fatalf("[FATAL]: could not read agent certificate")
 	}
-	_, err = openuem_utils.ReadPEMCertificate(key.String())
-	if err != nil {
-		log.Println("[ERROR]: could not read Agent cert file")
-		return err
-	}
-	us.AgentCert = key.String()
 
-	key, err = cfg.Section("Certificates").GetKey("AgentKey")
+	us.AgentKey = filepath.Join(cwd, "certificates", "agent.key")
+	_, err = openuem_utils.ReadPEMPrivateKey(us.AgentKey)
 	if err != nil {
-		log.Println("[ERROR]: could not get Agent Key path")
-		return err
+		log.Fatalf("[FATAL]: could not read agent private key")
 	}
-	_, err = openuem_utils.ReadPEMPrivateKey(key.String())
+
+	us.CACert = filepath.Join(cwd, "certificates", "ca.cer")
+	_, err = openuem_utils.ReadPEMCertificate(us.CACert)
 	if err != nil {
-		log.Println("[ERROR]: could not read Agent key file")
-		return err
+		log.Fatalf("[FATAL]: could not read CA certificate")
 	}
-	us.AgentKey = key.String()
 
 	return nil
 }
