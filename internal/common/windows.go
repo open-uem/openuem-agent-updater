@@ -201,7 +201,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 	}
 
 	// TODO - find a better place to save the agent installer and manage certificate location
-	downloadPath := filepath.Join(cwd, "certificates", "download.exe")
+	downloadPath := filepath.Join(cwd, "updates", "agent-setup.exe")
 	if err := openuem_utils.DownloadFile(data.DownloadFrom, downloadPath, data.DownloadHash); err != nil {
 		log.Printf("[ERROR]: could not download update to directory, reason %v", err)
 		msg.NakWithDelay(60 * time.Minute)

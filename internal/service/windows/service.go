@@ -4,6 +4,8 @@ package main
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/doncicuto/openuem-agent-updater/internal/common"
 	"github.com/doncicuto/openuem_utils"
@@ -18,6 +20,20 @@ func main() {
 
 	if err := us.ReadWindowsConfig(); err != nil {
 		log.Fatalf("[FATAL]: %v", err)
+	}
+
+	// Delete updates folder
+	cwd, err := openuem_utils.GetWd()
+	if err != nil {
+		log.Fatalf("[FATAL]: %v", err)
+	}
+
+	agentUpdatePath := filepath.Join(cwd, "updates", "agent-setup.exe")
+	_, err = os.Stat(agentUpdatePath)
+	if err == nil {
+		if err := os.Remove(agentUpdatePath); err != nil {
+			log.Println("[ERROR]: could not remove previous agent update")
+		}
 	}
 
 	ws := openuem_utils.NewOpenUEMWindowsService()
