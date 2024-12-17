@@ -7,9 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/doncicuto/openuem_nats"
@@ -76,6 +78,7 @@ func (us *UpdaterService) queueSubscribeForWindows() error {
 	c1, err := s.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
 		Durable:        "AgentUpdater" + us.AgentId,
 		FilterSubjects: []string{"agent.update." + us.AgentId},
+		Replicas:       int(math.Min(float64(len(strings.Split(us.NATSServers, ","))), 5)),
 	})
 	if err != nil {
 		log.Printf("[ERROR]: could not create Jetstream consumer: %s", err.Error())
