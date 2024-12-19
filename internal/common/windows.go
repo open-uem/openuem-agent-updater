@@ -75,11 +75,16 @@ func (us *UpdaterService) queueSubscribeForWindows() error {
 		return err
 	}
 
-	c1, err := s.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
+	consumerConfig := jetstream.ConsumerConfig{
 		Durable:        "AgentUpdater" + us.AgentId,
 		FilterSubjects: []string{"agent.update." + us.AgentId},
-		Replicas:       int(math.Min(float64(len(strings.Split(us.NATSServers, ","))), 5)),
-	})
+	}
+
+	if len(strings.Split(us.NATSServers, ",")) > 1 {
+		consumerConfig.Replicas = int(math.Min(float64(len(strings.Split(us.NATSServers, ","))), 5))
+	}
+
+	c1, err := s.CreateOrUpdateConsumer(ctx, consumerConfig)
 	if err != nil {
 		log.Printf("[ERROR]: could not create Jetstream consumer: %s", err.Error())
 		return err
