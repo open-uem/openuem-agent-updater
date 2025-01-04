@@ -1,6 +1,6 @@
 module github.com/doncicuto/openuem-agent-updater
 
-go 1.23.1
+go 1.23.4
 
 replace github.com/doncicuto/openuem_utils => ./internal/utils
 
