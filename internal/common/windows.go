@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/doncicuto/openuem_nats"
-	"github.com/doncicuto/openuem_utils"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	openuem_nats "github.com/open-uem/nats"
+	openuem_utils "github.com/open-uem/utils"
 	"golang.org/x/sys/windows/svc"
 	"gopkg.in/ini.v1"
 )

@@ -3,9 +3,9 @@ package common
 import (
 	"context"
 
-	"github.com/doncicuto/openuem_utils"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/nats-io/nats.go"
+	openuem_utils "github.com/open-uem/utils"
 )
 
 type UpdaterService struct {

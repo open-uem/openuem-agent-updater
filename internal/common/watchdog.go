@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/doncicuto/openuem_utils"
 	"github.com/go-co-op/gocron/v2"
+	openuem_utils "github.com/open-uem/utils"
 	"golang.org/x/sys/windows/svc"
 	"gopkg.in/ini.v1"
 )

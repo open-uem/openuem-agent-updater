@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/doncicuto/openuem_nats"
 	"github.com/go-co-op/gocron/v2"
+	openuem_nats "github.com/open-uem/nats"
 )
 
 func (us *UpdaterService) StartNATSConnectJob(queueSubscribe func() error) error {

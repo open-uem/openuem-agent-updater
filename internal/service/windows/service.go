@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/doncicuto/openuem-agent-updater/internal/common"
-	"github.com/doncicuto/openuem_utils"
+	"github.com/open-uem/openuem-agent-updater/internal/common"
+	openuem_utils "github.com/open-uem/utils"
 	"golang.org/x/sys/windows/svc"
 )
 
