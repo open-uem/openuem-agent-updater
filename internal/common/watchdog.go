@@ -8,6 +8,7 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	openuem_utils "github.com/open-uem/utils"
 	"golang.org/x/sys/windows/svc"
+	"golang.org/x/sys/windows/svc/mgr"
 	"gopkg.in/ini.v1"
 )
 
@@ -50,8 +51,10 @@ func (us *UpdaterService) Watchdog() {
 		return
 	}
 
+	// Check if service is running
+
 	if restartRequired {
-		// Stop service
+		// Restart service
 		if err := RestartService(); err != nil {
 			return
 		}
@@ -61,6 +64,15 @@ func (us *UpdaterService) Watchdog() {
 			log.Printf("[ERROR]: could not save RestartRequired to INI")
 		}
 		log.Printf("[INFO]: the agent has been restarted due to watchdog")
+	} else {
+		if !IsAgentServiceRunning() {
+			// Start service
+			if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
+				log.Printf("[ERROR]: could not start openuem-agent service, reason: %v\n", err)
+				return
+			}
+			log.Printf("[INFO]: the agent service was started as it wasn't running (fatal error?)")
+		}
 	}
 }
 
@@ -74,9 +86,29 @@ func RestartService() error {
 	// Start service
 	if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
 		// TODO: communicate this situation to the agent worker so it can show a warning
-		log.Printf("[ERROR]: could not stop openuem-agent service, reason: %v\n", err)
+		log.Printf("[ERROR]: could not start openuem-agent service, reason: %v\n", err)
 		return err
 	}
 
 	return nil
+}
+
+func IsAgentServiceRunning() bool {
+	m, err := mgr.Connect()
+	if err != nil {
+		log.Println("[ERROR]: could not connect with service manager")
+		return false
+	}
+	defer m.Disconnect()
+	s, err := m.OpenService("openuem-agent")
+	if err != nil {
+		log.Println("[ERROR]: could not open openuem-agent service")
+	}
+
+	status, err := s.Query()
+	if err != nil {
+		log.Println("[ERROR]: could not get openuem-agent service status")
+	}
+
+	return svc.Running == status.State
 }
