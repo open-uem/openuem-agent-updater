@@ -61,12 +61,12 @@ func (us *UpdaterService) Watchdog() {
 
 func RestartService() error {
 	// Stop service
-	if err := LinuxStartService("openuem-agent"); err != nil {
+	if err := LinuxStopService("openuem-agent"); err != nil {
 		return err
 	}
 
 	// Start service
-	if err := LinuxStopService("openuem-agent"); err != nil {
+	if err := LinuxStartService("openuem-agent"); err != nil {
 		return err
 	}
 
