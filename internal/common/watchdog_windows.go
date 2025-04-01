@@ -1,41 +1,22 @@
+//go:build windows
+
 package common
 
 import (
-	"fmt"
 	"log"
-	"time"
 
-	"github.com/go-co-op/gocron/v2"
 	openuem_utils "github.com/open-uem/utils"
 	"golang.org/x/sys/windows/svc"
 	"golang.org/x/sys/windows/svc/mgr"
 	"gopkg.in/ini.v1"
 )
 
-func (us *UpdaterService) StartWatchdogJob() error {
-	var err error
-
-	us.WatchdogJob, err = us.TaskScheduler.NewJob(
-		gocron.DurationJob(
-			time.Duration(time.Duration(5*time.Minute)),
-		),
-		gocron.NewTask(func() {
-			us.Watchdog()
-		}),
-	)
-	if err != nil {
-		return fmt.Errorf("could not start the Watchdog job: %v", err)
-	}
-	log.Printf("[INFO]: new Watchdog job has been scheduled every %d minutes", 5)
-	return nil
-}
-
 func (us *UpdaterService) Watchdog() {
 	var err error
 	var restartRequired bool
 
 	// Get conf file
-	configFile := openuem_utils.GetConfigFile()
+	configFile := openuem_utils.GetAgentConfigFile()
 
 	// Open ini file
 	cfg, err := ini.Load(configFile)
@@ -45,6 +26,10 @@ func (us *UpdaterService) Watchdog() {
 	}
 
 	key, err := cfg.Section("Agent").GetKey("RestartRequired")
+	if err != nil {
+		log.Println("[ERROR]: could not get RestartRequired key")
+	}
+
 	restartRequired, err = key.Bool()
 	if err != nil {
 		log.Println("[ERROR]: could not parse RestartRequired")
