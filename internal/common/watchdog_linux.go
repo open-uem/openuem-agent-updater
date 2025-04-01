@@ -91,7 +91,7 @@ func LinuxStopService(service string) error {
 }
 
 func IsAgentServiceRunning(service string) bool {
-	if err := exec.Command("systemctl", "stop", service).Run(); err != nil {
+	if err := exec.Command("systemctl", "is-active", "--quiet", service).Run(); err != nil {
 		return false
 	}
 
