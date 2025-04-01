@@ -233,28 +233,53 @@ func (us *UpdaterService) ReadConfig() error {
 	}
 	us.NATSServers = key.String()
 
-	// Read required certificates and private key
+	// Read required certificates and private key either from config file or
+	// reading from the current directory
 	cwd, err := openuem_utils.GetWd()
 	if err != nil {
 		log.Fatalf("[FATAL]: could not get current working directory")
 	}
 
-	us.AgentCert = filepath.Join(cwd, "certificates", "agent.cer")
+	// CA Cert
+	key, err = cfg.Section("Certificates").GetKey("CACert")
+	if err != nil {
+		log.Println("[ERROR]: could not get CA certificate from config file")
+		us.CACert = filepath.Join(cwd, "certificates", "ca.cer")
+	} else {
+		us.CACert = key.String()
+	}
+
+	_, err = openuem_utils.ReadPEMCertificate(us.CACert)
+	if err != nil {
+		log.Fatalf("[FATAL]: could not read CA certificate")
+	}
+
+	// Agent cert
+	key, err = cfg.Section("Certificates").GetKey("AgentCert")
+	if err != nil {
+		log.Println("[ERROR]: could not get agent certificate from config file")
+		us.AgentCert = filepath.Join(cwd, "certificates", "agent.cer")
+	} else {
+		us.AgentCert = key.String()
+	}
+
 	_, err = openuem_utils.ReadPEMCertificate(us.AgentCert)
 	if err != nil {
 		log.Fatalf("[FATAL]: could not read agent certificate")
 	}
 
-	us.AgentKey = filepath.Join(cwd, "certificates", "agent.key")
+	// Agent key
+	key, err = cfg.Section("Certificates").GetKey("AgentKey")
+	if err != nil {
+		log.Println("[ERROR]: could not get agent private key from config file")
+		us.AgentKey = filepath.Join(cwd, "certificates", "agent.cer")
+	} else {
+		us.AgentKey = key.String()
+	}
+
 	_, err = openuem_utils.ReadPEMPrivateKey(us.AgentKey)
 	if err != nil {
 		log.Fatalf("[FATAL]: could not read agent private key")
-	}
-
-	us.CACert = filepath.Join(cwd, "certificates", "ca.cer")
-	_, err = openuem_utils.ReadPEMCertificate(us.CACert)
-	if err != nil {
-		log.Fatalf("[FATAL]: could not read CA certificate")
 	}
 
 	return nil
