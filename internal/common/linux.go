@@ -43,6 +43,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 	}
 
 	// Confirm that update is going to run
+	SaveTaskInfoToINI(openuem_nats.UPDATE_SUCCESS, "")
 	msg.Ack()
 	log.Println("[INFO]: update command has been programmed: ", cmd.String())
 
@@ -50,7 +51,6 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 		log.Printf("[ERROR]: Command finished with error: %v", err)
 		return
 	}
-	log.Println("[INFO]: update command has finished: ", cmd.String())
 }
 
 func NewLogger(logFilename string) *openuem_utils.OpenUEMLogger {
