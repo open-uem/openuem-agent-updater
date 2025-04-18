@@ -80,3 +80,14 @@ func NewLogger(logFilename string) *openuem_utils.OpenUEMLogger {
 
 	return &logger
 }
+
+func UninstallAgent() error {
+	// Start apt remove command
+	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt remove -y openuem-agent"))
+	err := cmd.Start()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

@@ -80,7 +80,7 @@ func (us *UpdaterService) queueSubscribe() error {
 
 	consumerConfig := jetstream.ConsumerConfig{
 		Durable:        "AgentUpdater" + us.AgentId,
-		FilterSubjects: []string{"agent.update." + us.AgentId},
+		FilterSubjects: []string{"agent.update." + us.AgentId, "agent.uninstall." + us.AgentId},
 	}
 
 	if len(strings.Split(us.NATSServers, ",")) > 1 {
@@ -98,7 +98,8 @@ func (us *UpdaterService) queueSubscribe() error {
 	}))
 
 	log.Println("[INFO]: Jetstream created and started consuming messages")
-	log.Println("[INFO]: subscribed to message ", fmt.Sprintf("agent.update.%s", us.AgentId))
+	log.Println("[INFO]: subscribed to message", fmt.Sprintf("agent.update.%s", us.AgentId))
+	log.Println("[INFO]: subscribed to message", fmt.Sprintf("agent.uninstall.%s", us.AgentId))
 
 	// Subscribe to agent restart
 	_, err = us.NATSConnection.QueueSubscribe("agent.restart."+us.AgentId, "openuem-agent-management", us.restartHandler)
@@ -114,6 +115,10 @@ func (us *UpdaterService) queueSubscribe() error {
 func (us *UpdaterService) JetStreamUpdaterHandler(msg jetstream.Msg) {
 	if msg.Subject() == fmt.Sprintf("agent.update.%s", us.AgentId) {
 		us.updateHandler(msg)
+	}
+
+	if msg.Subject() == fmt.Sprintf("agent.uninstall.%s", us.AgentId) {
+		us.uninstallHandler(msg)
 	}
 }
 
@@ -178,9 +183,21 @@ func (us *UpdaterService) updateHandler(msg jetstream.Msg) {
 	}
 
 	if err := msg.Ack(); err != nil {
-		log.Printf("[ERROR]: could not sent ACK, reason: %v", err)
-		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not sent ACK, reason: %v", err))
+		log.Printf("[ERROR]: could not send ACK, reason: %v", err)
+		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not send ACK, reason: %v", err))
 		return
+	}
+
+	return
+}
+
+func (us *UpdaterService) uninstallHandler(msg jetstream.Msg) {
+	if err := UninstallAgent(); err != nil {
+		log.Printf("[ERROR]: could not run the uninstall agent, reason: %v\n", err)
+	}
+
+	if err := msg.Ack(); err != nil {
+		log.Printf("[ERROR]: could not send ACK, reason: %v", err)
 	}
 
 	return

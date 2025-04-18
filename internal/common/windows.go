@@ -64,3 +64,15 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 		return
 	}
 }
+
+func UninstallAgent() error {
+
+	uninstallPath := "C:\\Program Files\\OpenUEM Agent\\unins000.exe"
+	cmd := exec.Command(uninstallPath, "/VERYSILENT")
+	err := cmd.Start()
+	if err != nil {
+		log.Printf("[ERROR]: could not run %s command, reason: %v", uninstallPath, err)
+		return err
+	}
+	return nil
+}
