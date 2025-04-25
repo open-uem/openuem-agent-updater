@@ -188,10 +188,6 @@ func (us *UpdaterService) updateHandler(msg jetstream.Msg) {
 		return
 	}
 
-	if err := msg.Term(); err != nil {
-		log.Printf("[ERROR]: could not Terminate message, reason: %v", err)
-		return
-	}
 	return
 }
 
@@ -202,11 +198,6 @@ func (us *UpdaterService) uninstallHandler(msg jetstream.Msg) {
 
 	if err := msg.Ack(); err != nil {
 		log.Printf("[ERROR]: could not ACK message, reason: %v", err)
-		return
-	}
-
-	if err := msg.Term(); err != nil {
-		log.Printf("[ERROR]: could not Terminate message, reason: %v", err)
 		return
 	}
 

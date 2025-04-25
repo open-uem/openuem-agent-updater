@@ -61,11 +61,6 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 		return
 	}
 
-	if err := msg.Term(); err != nil {
-		log.Printf("[ERROR]: could not Terminate message, reason: %v", err)
-		return
-	}
-
 	cmd := exec.Command(downloadPath, "/VERYSILENT")
 	err = cmd.Start()
 	if err != nil {

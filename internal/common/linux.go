@@ -50,11 +50,6 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 		return
 	}
 
-	if err := msg.Term(); err != nil {
-		log.Printf("[ERROR]: could not Terminate message, reason: %v", err)
-		return
-	}
-
 	log.Println("[INFO]: update command has been programmed: ", cmd.String())
 
 	if err := cmd.Wait(); err != nil {
