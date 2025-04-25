@@ -55,7 +55,16 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 
 	SaveTaskInfoToINI(openuem_nats.UPDATE_SUCCESS, "")
 	log.Println("[INFO]: new OpenUEM Agent update command was called", downloadPath)
-	msg.Ack()
+
+	if err := msg.Ack(); err != nil {
+		log.Printf("[ERROR]: could not ACK message, reason: %v", err)
+		return
+	}
+
+	if err := msg.Term(); err != nil {
+		log.Printf("[ERROR]: could not Terminate message, reason: %v", err)
+		return
+	}
 
 	cmd := exec.Command(downloadPath, "/VERYSILENT")
 	err = cmd.Start()

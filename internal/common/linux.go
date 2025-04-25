@@ -44,7 +44,17 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 
 	// Confirm that update is going to run
 	SaveTaskInfoToINI(openuem_nats.UPDATE_SUCCESS, "")
-	msg.Ack()
+
+	if err := msg.Ack(); err != nil {
+		log.Printf("[ERROR]: could not ACK message, reason: %v", err)
+		return
+	}
+
+	if err := msg.Term(); err != nil {
+		log.Printf("[ERROR]: could not Terminate message, reason: %v", err)
+		return
+	}
+
 	log.Println("[INFO]: update command has been programmed: ", cmd.String())
 
 	if err := cmd.Wait(); err != nil {

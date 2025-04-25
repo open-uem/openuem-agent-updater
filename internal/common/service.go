@@ -72,29 +72,14 @@ func (us *UpdaterService) queueSubscribe() error {
 	log.Println("[INFO]: JetStream has been instantiated")
 
 	ctx, us.JetstreamContextCancel = context.WithTimeout(context.Background(), 60*time.Minute)
-
-	if err := js.DeleteConsumer(ctx, "AGENTS_STREAM_WORKQUEUE", "AgentUpdaterConsumer"+us.AgentId); err == nil {
-		log.Println("[INFO]: old consumer for AGENTS_STREAM_WORKQUEUE has been deleted")
-	}
-
-	if err := js.DeleteStream(ctx, "AGENTS_STREAM"); err == nil {
-		log.Println("[INFO]: old JetStream AGENTS_STREAM has been deleted")
-	}
-
-	streamConfig := jetstream.StreamConfig{
-		Name:      "AGENTS_STREAM_WORKQUEUE",
-		Subjects:  []string{"agent.update." + us.AgentId, "agent.uninstall." + us.AgentId},
-		Retention: jetstream.WorkQueuePolicy,
-	}
-
-	s, err := js.CreateOrUpdateStream(ctx, streamConfig)
+	s, err := js.Stream(ctx, "AGENTS_STREAM")
 	if err != nil {
-		log.Printf("[ERROR]: could not instantiate AGENTS_STREAM_WORKQUEUE, reason: %v\n", err)
+		log.Printf("[ERROR]: could not create stream AGENTS_STREAM: %v\n", err)
 		return err
 	}
 
 	consumerConfig := jetstream.ConsumerConfig{
-		Durable:        "AgentUpdaterConsumer" + us.AgentId,
+		Durable:        "AgentUpdater" + us.AgentId,
 		FilterSubjects: []string{"agent.update." + us.AgentId, "agent.uninstall." + us.AgentId},
 	}
 
@@ -198,11 +183,15 @@ func (us *UpdaterService) updateHandler(msg jetstream.Msg) {
 	}
 
 	if err := msg.Ack(); err != nil {
-		log.Printf("[ERROR]: could not send ACK, reason: %v", err)
+		log.Printf("[ERROR]: could not ACK message, reason: %v", err)
 		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not send ACK, reason: %v", err))
 		return
 	}
 
+	if err := msg.Term(); err != nil {
+		log.Printf("[ERROR]: could not Terminate message, reason: %v", err)
+		return
+	}
 	return
 }
 
@@ -212,7 +201,13 @@ func (us *UpdaterService) uninstallHandler(msg jetstream.Msg) {
 	}
 
 	if err := msg.Ack(); err != nil {
-		log.Printf("[ERROR]: could not send ACK, reason: %v", err)
+		log.Printf("[ERROR]: could not ACK message, reason: %v", err)
+		return
+	}
+
+	if err := msg.Term(); err != nil {
+		log.Printf("[ERROR]: could not Terminate message, reason: %v", err)
+		return
 	}
 
 	return
