@@ -72,14 +72,29 @@ func (us *UpdaterService) queueSubscribe() error {
 	log.Println("[INFO]: JetStream has been instantiated")
 
 	ctx, us.JetstreamContextCancel = context.WithTimeout(context.Background(), 60*time.Minute)
-	s, err := js.Stream(ctx, "AGENTS_STREAM")
+
+	if err := js.DeleteConsumer(ctx, "AGENTS_STREAM_WORKQUEUE", "AgentUpdaterConsumer"+us.AgentId); err == nil {
+		log.Println("[INFO]: old consumer for AGENTS_STREAM_WORKQUEUE has been deleted")
+	}
+
+	if err := js.DeleteStream(ctx, "AGENTS_STREAM"); err == nil {
+		log.Println("[INFO]: old JetStream AGENTS_STREAM has been deleted")
+	}
+
+	streamConfig := jetstream.StreamConfig{
+		Name:      "AGENTS_STREAM_WORKQUEUE",
+		Subjects:  []string{"agent.update." + us.AgentId, "agent.uninstall." + us.AgentId},
+		Retention: jetstream.WorkQueuePolicy,
+	}
+
+	s, err := js.CreateOrUpdateStream(ctx, streamConfig)
 	if err != nil {
-		log.Printf("[ERROR]: could not create stream AGENTS_STREAM: %v\n", err)
+		log.Printf("[ERROR]: could not instantiate AGENTS_STREAM_WORKQUEUE, reason: %v\n", err)
 		return err
 	}
 
 	consumerConfig := jetstream.ConsumerConfig{
-		Durable:        "AgentUpdater" + us.AgentId,
+		Durable:        "AgentUpdaterConsumer" + us.AgentId,
 		FilterSubjects: []string{"agent.update." + us.AgentId, "agent.uninstall." + us.AgentId},
 	}
 
