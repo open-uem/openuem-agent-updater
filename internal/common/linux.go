@@ -32,6 +32,11 @@ func NewUpdateService() (*UpdaterService, error) {
 
 func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 
+	if err := exec.Command("apt", "update").Run(); err != nil {
+		log.Printf("[ERROR]: could not run apt update, reason: %v", err)
+		return
+	}
+
 	// Start apt install command
 	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt install -y --allow-downgrades openuem-agent="+data.Version))
 	err := cmd.Start()
