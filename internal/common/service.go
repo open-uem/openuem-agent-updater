@@ -96,6 +96,10 @@ func (us *UpdaterService) queueSubscribe() error {
 	_, err = c1.Consume(us.JetStreamUpdaterHandler, jetstream.ConsumeErrHandler(func(consumeCtx jetstream.ConsumeContext, err error) {
 		log.Printf("[ERROR]: consumer error: %s", err.Error())
 	}))
+	if err != nil {
+		log.Printf("[ERROR]: could not start consuming messages: %s", err.Error())
+		return err
+	}
 
 	log.Println("[INFO]: Jetstream created and started consuming messages")
 	log.Println("[INFO]: subscribed to message", fmt.Sprintf("agent.update.%s", us.AgentId))
@@ -178,17 +182,9 @@ func (us *UpdaterService) updateHandler(msg jetstream.Msg) {
 				SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not schedule the update task: %v", err))
 				return
 			}
-			log.Printf("[INFO]: new update task scheduled a %s", data.UpdateAt.String())
+			log.Printf("[INFO]: new update task scheduled at %s", data.UpdateAt.String())
 		}
 	}
-
-	if err := msg.Ack(); err != nil {
-		log.Printf("[ERROR]: could not ACK message, reason: %v", err)
-		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not send ACK, reason: %v", err))
-		return
-	}
-
-	return
 }
 
 func (us *UpdaterService) uninstallHandler(msg jetstream.Msg) {
@@ -200,8 +196,6 @@ func (us *UpdaterService) uninstallHandler(msg jetstream.Msg) {
 		log.Printf("[ERROR]: could not ACK message, reason: %v", err)
 		return
 	}
-
-	return
 }
 
 func SaveTaskInfoToINI(status, result string) {

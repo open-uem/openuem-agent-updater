@@ -15,6 +15,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	openuem_nats "github.com/open-uem/nats"
 	openuem_utils "github.com/open-uem/utils"
+	"github.com/zcalusic/sysinfo"
 )
 
 func NewUpdateService() (*UpdaterService, error) {
@@ -31,14 +32,32 @@ func NewUpdateService() (*UpdaterService, error) {
 }
 
 func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
+	var cmd *exec.Cmd
 
-	if err := exec.Command("apt", "update").Run(); err != nil {
-		log.Printf("[ERROR]: could not run apt update, reason: %v", err)
+	os := GetOSVendor()
+
+	// Refresh repositories before install
+	RefreshRepositories(os)
+
+	// Start install command
+	version := data.Version
+
+	// Update package
+	switch os {
+	case "debian", "ubuntu", "linuxmint":
+		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt install -y --allow-downgrades openuem-agent="+version))
+	case "fedora", "almalinux", "redhat":
+		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf install -y openuem-agent="+version))
+	}
+
+	if cmd == nil {
+		if err := msg.Ack(); err != nil {
+			log.Printf("[ERROR]: could not ACK message, reason: %v", err)
+		}
+		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("[ERROR]: unsupported OS: %s", os))
 		return
 	}
 
-	// Start apt install command
-	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt install -y --allow-downgrades openuem-agent="+data.Version))
 	err := cmd.Start()
 	if err != nil {
 		log.Printf("[ERROR]: could not run %s command, reason: %v", cmd.String(), err)
@@ -61,6 +80,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 		log.Printf("[ERROR]: Command finished with error: %v", err)
 		return
 	}
+
 }
 
 func NewLogger(logFilename string) *openuem_utils.OpenUEMLogger {
@@ -92,12 +112,49 @@ func NewLogger(logFilename string) *openuem_utils.OpenUEMLogger {
 }
 
 func UninstallAgent() error {
+	var cmd *exec.Cmd
+
+	os := GetOSVendor()
+
+	switch os {
+	case "debian", "ubuntu", "linuxmint":
+		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt remove -y openuem-agent"))
+	case "fedora", "almalinux", "redhat":
+		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf remove -y openuem-agent"))
+	default:
+		return fmt.Errorf("unsupported os")
+	}
+
 	// Start apt remove command
-	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt remove -y openuem-agent"))
 	err := cmd.Start()
 	if err != nil {
 		return err
 	}
 
+	log.Println("[INFO]: uninstall command has been programmed: ", cmd.String())
+
 	return nil
+}
+
+func GetOSVendor() string {
+	var si sysinfo.SysInfo
+
+	si.GetSysInfo()
+
+	return si.OS.Vendor
+}
+
+func RefreshRepositories(os string) {
+
+	switch os {
+	case "debian", "ubuntu", "linuxmint":
+		if err := exec.Command("apt", "update").Run(); err != nil {
+			log.Printf("[ERROR]: could not run apt update, reason: %v", err)
+		}
+		// case "fedora", "almalinux", "redhat":
+		// 	if err := exec.Command("dnf", "check-update").Run(); err != nil {
+		// 		log.Printf("[ERROR]: could not run dnf check-update, reason: %v", err)
+		// 	}
+	}
+
 }
