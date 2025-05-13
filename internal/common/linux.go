@@ -46,7 +46,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 	switch os {
 	case "debian", "ubuntu", "linuxmint":
 		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt install -y --allow-downgrades openuem-agent="+version))
-	case "fedora", "almalinux", "redhat":
+	case "fedora", "almalinux", "redhat", "rocky":
 		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf install --refresh -y openuem-agent="+version))
 	}
 
@@ -119,7 +119,7 @@ func UninstallAgent() error {
 	switch os {
 	case "debian", "ubuntu", "linuxmint":
 		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt remove -y openuem-agent"))
-	case "fedora", "almalinux", "redhat":
+	case "fedora", "almalinux", "redhat", "rocky":
 		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf remove -y openuem-agent"))
 	default:
 		return fmt.Errorf("unsupported os")
@@ -145,16 +145,10 @@ func GetOSVendor() string {
 }
 
 func RefreshRepositories(os string) {
-
 	switch os {
 	case "debian", "ubuntu", "linuxmint":
 		if err := exec.Command("apt", "update").Run(); err != nil {
 			log.Printf("[ERROR]: could not run apt update, reason: %v", err)
 		}
-		// case "fedora", "almalinux", "redhat":
-		// 	if err := exec.Command("dnf", "check-update").Run(); err != nil {
-		// 		log.Printf("[ERROR]: could not run dnf check-update, reason: %v", err)
-		// 	}
 	}
-
 }
