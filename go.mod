@@ -5,7 +5,7 @@ go 1.24.2
 require (
 	github.com/go-co-op/gocron/v2 v2.16.1
 	github.com/nats-io/nats.go v1.41.2
-	github.com/open-uem/nats v0.0.0-20250506153024-3417927f377b
+	github.com/open-uem/nats v0.0.0-20250513111754-eccc8eb60a46
 	github.com/open-uem/utils v0.0.0-20250424154005-aa7e1df31e6c
 	github.com/zcalusic/sysinfo v1.1.3
 	golang.org/x/sys v0.32.0
