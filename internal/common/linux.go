@@ -71,7 +71,6 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 
 	if err := msg.Ack(); err != nil {
 		log.Printf("[ERROR]: could not ACK message, reason: %v", err)
-		return
 	}
 
 	log.Println("[INFO]: update command has been programmed: ", cmd.String())
