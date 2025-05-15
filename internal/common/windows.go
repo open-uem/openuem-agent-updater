@@ -58,7 +58,6 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 
 	if err := msg.Ack(); err != nil {
 		log.Printf("[ERROR]: could not ACK message, reason: %v", err)
-		return
 	}
 
 	cmd := exec.Command(downloadPath, "/VERYSILENT")
