@@ -74,7 +74,7 @@ func RestartService() error {
 }
 
 func MacStartAgentService() error {
-	if err := exec.Command("launchctl", "load", "/Library/LaunchDaemons/openuem-agent").Run(); err != nil {
+	if err := exec.Command("launchctl", "load", "-w", "/Library/LaunchDaemons/openuem-agent.plist").Run(); err != nil {
 		log.Printf("[ERROR]: could not start openuem-agent service, reason: %v\n", err)
 		return err
 	}
@@ -82,7 +82,7 @@ func MacStartAgentService() error {
 }
 
 func MacStopAgentService() error {
-	if err := exec.Command("launchctl", "unload", "/Library/LaunchDaemons/openuem-agent").Run(); err != nil {
+	if err := exec.Command("launchctl", "unload", "-w", "/Library/LaunchDaemons/openuem-agent.plist").Run(); err != nil {
 		log.Printf("[ERROR]: could not stop openuem-agent service, reason: %v\n", err)
 		return err
 	}

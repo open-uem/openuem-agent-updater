@@ -50,7 +50,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 	}
 
 	// Stop service
-	stopServiceCmd := "launchctl unload /Library/LaunchDaemons/openuem-agent.plist"
+	stopServiceCmd := "launchctl unload -w /Library/LaunchDaemons/openuem-agent.plist"
 	cmd := exec.Command("bash", "-c", stopServiceCmd)
 	if err := cmd.Run(); err != nil {
 		log.Printf("[ERROR]: could not stop the openuem-agent service, reason: %v", err)
@@ -63,7 +63,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 		log.Printf("[ERROR]: could not ACK message, reason: %v", err)
 	}
 
-	installCmd := fmt.Sprintf("installer -pkg %s -target /", downloadPath)
+	installCmd := fmt.Sprintf("installer -pkg %s -target /;launchctl kickstart -k -p system/eu.openuem.openuem-agent;launchctl kickstart -k -p system/eu.openuem.openuem-agent-updater", downloadPath)
 	err = exec.Command("bash", "-c", installCmd).Start()
 	if err != nil {
 		log.Printf("[ERROR]: could not run %s command, reason: %v", installCmd, err)
@@ -72,9 +72,11 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 }
 
 func UninstallAgent() error {
-	uninstallPath := "/Library/OpenUEMAgent/uninstall.sh "
-	cmd := exec.Command(uninstallPath)
-	err := cmd.Start()
+	uninstallPath := "/Library/OpenUEMAgent/uninstall.sh"
+	log.Println("[INFO]: will try to uninstall the agent using: ", uninstallPath)
+
+	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "bash /Library/OpenUEMAgent/uninstall.sh"))
+	err := cmd.Run()
 	if err != nil {
 		log.Printf("[ERROR]: could not run %s command, reason: %v", uninstallPath, err)
 		return err
