@@ -15,7 +15,6 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	openuem_nats "github.com/open-uem/nats"
 	openuem_utils "github.com/open-uem/utils"
-	"github.com/zcalusic/sysinfo"
 )
 
 func NewUpdateService() (*UpdaterService, error) {
@@ -32,54 +31,55 @@ func NewUpdateService() (*UpdaterService, error) {
 }
 
 func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
-	var cmd *exec.Cmd
-
-	os := GetOSVendor()
-
-	// Refresh repositories before install
-	RefreshRepositories(os)
-
-	// Start install command
-	version := data.Version
-
-	// Update package
-	switch os {
-	case "debian", "ubuntu", "linuxmint":
-		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt install -y --allow-downgrades openuem-agent="+version))
-	case "fedora", "almalinux", "redhat", "rocky":
-		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf install --allow-downgrade --refresh -y openuem-agent-"+version))
-	}
-
-	if cmd == nil {
-		if err := msg.Ack(); err != nil {
-			log.Printf("[ERROR]: could not ACK message, reason: %v", err)
-		}
-		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("[ERROR]: unsupported OS: %s", os))
-		return
-	}
-
-	err := cmd.Start()
+	// Download the file
+	cwd, err := openuem_utils.GetWd()
 	if err != nil {
-		log.Printf("[ERROR]: could not run %s command, reason: %v", cmd.String(), err)
+		log.Printf("[ERROR]: could not get working directory, reason %v", err)
 		msg.NakWithDelay(60 * time.Minute)
-		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("[ERROR]: could not run %s command, reason: %v", cmd.String(), err))
+		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not get working directory, reason %v", err))
 		return
 	}
 
-	// Confirm that update is going to run
+	// TODO - find a better place to save the agent installer and manage certificate location
+	downloadPath := filepath.Join(cwd, "updates", "agent.pkg")
+	if err := openuem_utils.DownloadFile(data.DownloadFrom, downloadPath, data.DownloadHash); err != nil {
+		log.Printf("[ERROR]: could not download update to directory, reason %v", err)
+		msg.NakWithDelay(60 * time.Minute)
+		SaveTaskInfoToINI(openuem_nats.UPDATE_ERROR, fmt.Sprintf("could not download update to directory, reason %v\n", err))
+		return
+	}
+
+	// Stop service
+	stopServiceCmd := "launchctl unload /Library/LaunchDaemons/openuem-agent.plist"
+	cmd := exec.Command("bash", "-c", stopServiceCmd)
+	if err := cmd.Run(); err != nil {
+		log.Printf("[ERROR]: could not stop the openuem-agent service, reason: %v", err)
+	}
+
 	SaveTaskInfoToINI(openuem_nats.UPDATE_SUCCESS, "")
+	log.Println("[INFO]: new OpenUEM Agent update command was called", downloadPath)
 
 	if err := msg.Ack(); err != nil {
 		log.Printf("[ERROR]: could not ACK message, reason: %v", err)
 	}
 
-	log.Println("[INFO]: update command has been programmed: ", cmd.String())
-
-	if err := cmd.Wait(); err != nil {
-		log.Printf("[ERROR]: Command finished with error: %v", err)
+	installCmd := fmt.Sprintf("installer -pkg %s -target /", downloadPath)
+	err = exec.Command("bash", "-c", installCmd).Start()
+	if err != nil {
+		log.Printf("[ERROR]: could not run %s command, reason: %v", installCmd, err)
 		return
 	}
+}
 
+func UninstallAgent() error {
+	uninstallPath := "/Library/OpenUEMAgent/uninstall.sh "
+	cmd := exec.Command(uninstallPath)
+	err := cmd.Start()
+	if err != nil {
+		log.Printf("[ERROR]: could not run %s command, reason: %v", uninstallPath, err)
+		return err
+	}
+	return nil
 }
 
 func NewLogger(logFilename string) *openuem_utils.OpenUEMLogger {
@@ -108,46 +108,4 @@ func NewLogger(logFilename string) *openuem_utils.OpenUEMLogger {
 	log.SetFlags(log.Ldate | log.Ltime)
 
 	return &logger
-}
-
-func UninstallAgent() error {
-	var cmd *exec.Cmd
-
-	os := GetOSVendor()
-
-	switch os {
-	case "debian", "ubuntu", "linuxmint":
-		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt remove -y openuem-agent"))
-	case "fedora", "almalinux", "redhat", "rocky":
-		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf remove -y openuem-agent"))
-	default:
-		return fmt.Errorf("unsupported os")
-	}
-
-	// Start apt remove command
-	err := cmd.Start()
-	if err != nil {
-		return err
-	}
-
-	log.Println("[INFO]: uninstall command has been programmed: ", cmd.String())
-
-	return nil
-}
-
-func GetOSVendor() string {
-	var si sysinfo.SysInfo
-
-	si.GetSysInfo()
-
-	return si.OS.Vendor
-}
-
-func RefreshRepositories(os string) {
-	switch os {
-	case "debian", "ubuntu", "linuxmint":
-		if err := exec.Command("apt", "update").Run(); err != nil {
-			log.Printf("[ERROR]: could not run apt update, reason: %v", err)
-		}
-	}
 }
