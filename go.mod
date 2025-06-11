@@ -6,7 +6,7 @@ require (
 	github.com/go-co-op/gocron/v2 v2.16.1
 	github.com/nats-io/nats.go v1.41.2
 	github.com/open-uem/nats v0.0.0-20250514125548-3bae96c53080
-	github.com/open-uem/utils v0.0.0-20250610122647-138a3573c311
+	github.com/open-uem/utils v0.0.0-20250611060546-cab35b3801b9
 	github.com/zcalusic/sysinfo v1.1.3
 	golang.org/x/sys v0.32.0
 	gopkg.in/ini.v1 v1.67.0

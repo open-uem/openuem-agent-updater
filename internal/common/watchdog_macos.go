@@ -96,7 +96,5 @@ func IsAgentServiceRunning() bool {
 		return false
 	}
 
-	// if strings.Contains(string(out), "")
-
 	return true
 }

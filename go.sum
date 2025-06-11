@@ -24,6 +24,8 @@ github.com/open-uem/utils v0.0.0-20250610122506-51ed8b0e2976 h1:YQzpW8eENSpSszsC
 github.com/open-uem/utils v0.0.0-20250610122506-51ed8b0e2976/go.mod h1:nPL4xlsiCPyUiF8ntnyrlyz+pVjizIC+N5+TOvj3TLc=
 github.com/open-uem/utils v0.0.0-20250610122647-138a3573c311 h1:vMTPGZ7UV2tVm7oJy1r53sriUE13glB6AgopMr7I/3I=
 github.com/open-uem/utils v0.0.0-20250610122647-138a3573c311/go.mod h1:nPL4xlsiCPyUiF8ntnyrlyz+pVjizIC+N5+TOvj3TLc=
+github.com/open-uem/utils v0.0.0-20250611060546-cab35b3801b9 h1:u54f6Oq97w7FDHl9oOWKe97TRddxhfqrAPCdXRwiF2A=
+github.com/open-uem/utils v0.0.0-20250611060546-cab35b3801b9/go.mod h1:nPL4xlsiCPyUiF8ntnyrlyz+pVjizIC+N5+TOvj3TLc=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/robfig/cron/v3 v3.0.1 h1:WdRxkvbJztn8LMz/QEvLN5sBU+xKpSqwwUO1Pjr4qDs=
