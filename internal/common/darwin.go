@@ -76,9 +76,9 @@ func UninstallAgent() error {
 	log.Println("[INFO]: will try to uninstall the agent using: ", uninstallPath)
 
 	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "bash /Library/OpenUEMAgent/uninstall.sh"))
-	err := cmd.Run()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("[ERROR]: could not run %s command, reason: %v", uninstallPath, err)
+		log.Printf("[ERROR]: could not run %s command, reason: %s", uninstallPath, string(out))
 		return err
 	}
 	return nil
