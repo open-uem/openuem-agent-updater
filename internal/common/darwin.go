@@ -72,6 +72,13 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 }
 
 func UninstallAgent() error {
+	// Start at daemon
+	startAtCmd := "launchctl load -F /System/Library/LaunchDaemons/com.apple.atrun.plist"
+	atCmd := exec.Command("bash", "-c", startAtCmd)
+	if err := atCmd.Run(); err != nil {
+		log.Printf("[ERROR]: could not start the at service, reason: %v", err)
+	}
+
 	uninstallPath := "/Library/OpenUEMAgent/uninstall.sh"
 	log.Println("[INFO]: will try to uninstall the agent using: ", uninstallPath)
 
