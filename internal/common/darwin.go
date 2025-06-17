@@ -74,7 +74,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 func UninstallAgent() error {
 	// Start uninstall daemon
 	log.Println("[INFO]: a request to uninstall OpenUEM Agent has been received")
-	uninstallCmd := "launchctl load -w /Library/LaunchDaemons/openuem-agent-uninstaller.plist"
+	uninstallCmd := "launchctl load -F /Library/LaunchDaemons/openuem-agent-uninstaller.plist"
 	out, err := exec.Command("bash", "-c", uninstallCmd).CombinedOutput()
 	if err != nil {
 		log.Printf("[ERROR]: could not run uninstall daemon, reason: %s", string(out))
