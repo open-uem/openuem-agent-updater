@@ -1,6 +1,6 @@
 module github.com/open-uem/openuem-agent-updater
 
-go 1.24.2
+go 1.24.4
 
 require (
 	github.com/go-co-op/gocron/v2 v2.16.1
