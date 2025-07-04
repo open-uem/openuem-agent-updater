@@ -3,7 +3,10 @@
 package common
 
 import (
+	"fmt"
 	"log"
+	"os"
+	"time"
 
 	openuem_utils "github.com/open-uem/utils"
 	"golang.org/x/sys/windows/svc"
@@ -51,6 +54,11 @@ func (us *UpdaterService) Watchdog() {
 		log.Printf("[INFO]: the agent has been restarted due to watchdog")
 	} else {
 		if !IsAgentServiceRunning() {
+			// Create a backup of the agent's log before starting the service
+			if err := os.Rename("C:\\Program Files\\OpenUEM Agent\\logs\\openuem-log.txt", fmt.Sprintf("C:\\Program Files\\OpenUEM Agent\\logs\\openuem-log-%d.txt", time.Now().Unix())); err != nil {
+				log.Printf("[ERROR]: could not create a backup of the agent log")
+			}
+
 			// Start service
 			if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
 				log.Printf("[ERROR]: could not start openuem-agent service, reason: %v\n", err)
