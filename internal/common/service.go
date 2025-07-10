@@ -62,20 +62,38 @@ func (us *UpdaterService) StopService() {
 }
 
 func (us *UpdaterService) queueSubscribe() error {
+
+	// Create JetStream consumer with associated subjects
+	go func() {
+		us.CreateUpdaterJetStreamConsumer()
+	}()
+
+	// Subscribe to agent restart
+	_, err := us.NATSConnection.QueueSubscribe("agent.restart."+us.AgentId, "openuem-agent-management", us.restartHandler)
+	if err != nil {
+		log.Printf("[ERROR]: could not subscribe to NATS message, reason: %v", err)
+		return err
+	}
+	log.Printf("[INFO]: subscribed to message agent.restart")
+
+	return nil
+}
+
+func (us *UpdaterService) CreateUpdaterJetStreamConsumer() {
 	var ctx context.Context
 
 	js, err := jetstream.New(us.NATSConnection)
 	if err != nil {
 		log.Printf("[ERROR]: could not instantiate JetStream: %s", err.Error())
-		return err
+		return
 	}
 	log.Println("[INFO]: JetStream has been instantiated")
 
-	ctx, us.JetstreamContextCancel = context.WithTimeout(context.Background(), 60*time.Minute)
+	ctx, us.JetstreamContextCancel = context.WithTimeout(context.Background(), 5*time.Minute)
 	s, err := js.Stream(ctx, "AGENTS_STREAM")
 	if err != nil {
 		log.Printf("[ERROR]: could not create stream AGENTS_STREAM: %v\n", err)
-		return err
+		return
 	}
 
 	consumerConfig := jetstream.ConsumerConfig{
@@ -90,7 +108,7 @@ func (us *UpdaterService) queueSubscribe() error {
 	c1, err := s.CreateOrUpdateConsumer(ctx, consumerConfig)
 	if err != nil {
 		log.Printf("[ERROR]: could not create Jetstream consumer: %s", err.Error())
-		return err
+		return
 	}
 	// TODO stop consume context ()
 	_, err = c1.Consume(us.JetStreamUpdaterHandler, jetstream.ConsumeErrHandler(func(consumeCtx jetstream.ConsumeContext, err error) {
@@ -98,22 +116,12 @@ func (us *UpdaterService) queueSubscribe() error {
 	}))
 	if err != nil {
 		log.Printf("[ERROR]: could not start consuming messages: %s", err.Error())
-		return err
+		return
 	}
 
 	log.Println("[INFO]: Jetstream created and started consuming messages")
 	log.Println("[INFO]: subscribed to message", fmt.Sprintf("agent.update.%s", us.AgentId))
 	log.Println("[INFO]: subscribed to message", fmt.Sprintf("agent.uninstall.%s", us.AgentId))
-
-	// Subscribe to agent restart
-	_, err = us.NATSConnection.QueueSubscribe("agent.restart."+us.AgentId, "openuem-agent-management", us.restartHandler)
-	if err != nil {
-		log.Printf("[ERROR]: could not subscribe to NATS message, reason: %v", err)
-		return err
-	}
-	log.Printf("[INFO]: subscribed to message agent.restart")
-
-	return nil
 }
 
 func (us *UpdaterService) JetStreamUpdaterHandler(msg jetstream.Msg) {
