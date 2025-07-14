@@ -117,7 +117,7 @@ func UninstallAgent() error {
 
 	switch os {
 	case "debian", "ubuntu", "linuxmint":
-		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt remove -y openuem-agent"))
+		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt purge -y openuem-agent"))
 	case "fedora", "almalinux", "redhat", "rocky":
 		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf remove -y openuem-agent"))
 	default:
