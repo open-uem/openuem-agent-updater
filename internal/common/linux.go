@@ -49,7 +49,7 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 	case "fedora", "almalinux", "redhat", "rocky":
 		description := GetOSDescription()
 		if strings.Contains(description, "Silverblue") || strings.Contains(description, "Kinoite") {
-			cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo rpm-ostree install openuem-agent"))
+			cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("sudo touch /var/spool/at/.SEQ && echo \"%s\" | at now +1 minute", "sudo rpm-ostree install openuem-agent"))
 		} else {
 			cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf install --allow-downgrade --refresh -y openuem-agent-"+version))
 		}
@@ -126,7 +126,7 @@ func UninstallAgent() error {
 	case "fedora", "almalinux", "redhat", "rocky":
 		description := GetOSDescription()
 		if strings.Contains(description, "Silverblue") || strings.Contains(description, "Kinoite") {
-			cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo rpm-ostree uninstall openuem-agent"))
+			cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("sudo touch /var/spool/at/.SEQ && echo \"%s\" | at now +1 minute", "sudo rpm-ostree uninstall openuem-agent"))
 		} else {
 			cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf remove -y openuem-agent"))
 		}
