@@ -47,7 +47,12 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 	case "debian", "ubuntu", "linuxmint":
 		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt install -y --allow-downgrades openuem-agent="+version))
 	case "fedora", "almalinux", "redhat", "rocky":
-		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf install --allow-downgrade --refresh -y openuem-agent-"+version))
+		description := GetOSDescription()
+		if strings.Contains(description, "Silverblue") || strings.Contains(description, "Kinoite") {
+			cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo rpm-ostree install openuem-agent"))
+		} else {
+			cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf install --allow-downgrade --refresh -y openuem-agent-"+version))
+		}
 	}
 
 	if cmd == nil {
@@ -119,7 +124,13 @@ func UninstallAgent() error {
 	case "debian", "ubuntu", "linuxmint":
 		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt purge -y openuem-agent"))
 	case "fedora", "almalinux", "redhat", "rocky":
-		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf remove -y openuem-agent"))
+		description := GetOSDescription()
+		if strings.Contains(description, "Silverblue") || strings.Contains(description, "Kinoite") {
+			cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo rpm-ostree uninstall openuem-agent"))
+		} else {
+			cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo dnf remove -y openuem-agent"))
+		}
+
 	default:
 		return fmt.Errorf("unsupported os")
 	}
@@ -141,6 +152,14 @@ func GetOSVendor() string {
 	si.GetSysInfo()
 
 	return si.OS.Vendor
+}
+
+func GetOSDescription() string {
+	var si sysinfo.SysInfo
+
+	si.GetSysInfo()
+
+	return si.OS.Name
 }
 
 func RefreshRepositories(os string) {
