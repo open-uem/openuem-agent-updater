@@ -44,9 +44,9 @@ func ExecuteUpdate(data openuem_nats.OpenUEMUpdateRequest, msg jetstream.Msg) {
 
 	// Update package
 	switch os {
-	case "debian", "ubuntu", "linuxmint":
+	case "debian", "ubuntu", "linuxmint", "neon":
 		cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("echo \"%s\" | at now +1 minute", "sudo apt install -y --allow-downgrades openuem-agent="+version))
-	case "fedora", "almalinux", "redhat", "rocky":
+	case "fedora", "opensuse-leap", "almalinux", "redhat", "rocky":
 		description := GetOSDescription()
 		if strings.Contains(description, "Silverblue") || strings.Contains(description, "Kinoite") {
 			cmd = exec.Command("/bin/sh", "-c", fmt.Sprintf("sudo touch /var/spool/at/.SEQ && echo \"%s\" | at now +1 minute", "sudo rpm-ostree install openuem-agent"))
