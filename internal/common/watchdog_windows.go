@@ -3,10 +3,8 @@
 package common
 
 import (
-	"fmt"
 	"log"
 	"os"
-	"time"
 
 	openuem_utils "github.com/open-uem/utils"
 	"golang.org/x/sys/windows/svc"
@@ -40,41 +38,40 @@ func (us *UpdaterService) Watchdog() {
 	}
 
 	// Check if service is running
+	if restartRequired || !IsAgentServiceRunning() {
+		if IsAgentServiceRunning() {
+			// Stop service
+			if err := openuem_utils.WindowsSvcControl("openuem-agent", svc.Stop, svc.Stopped); err != nil {
+				log.Printf("[ERROR]: could not stop openuem-agent service, reason: %v\n", err)
+			}
+		}
 
-	if restartRequired {
-		// Restart service
-		if err := RestartService(); err != nil {
+		// Create a backup of the agent's log before starting the service
+		if err := os.Rename("C:\\Program Files\\OpenUEM Agent\\logs\\openuem-log.txt", "C:\\Program Files\\OpenUEM Agent\\logs\\openuem-log-before-forced-restart.txt"); err != nil {
+			log.Printf("[ERROR]: could not create a backup of the agent log")
+		}
+
+		// Start service
+		if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
+			// TODO: communicate this situation to the agent worker so it can show a warning
+			log.Printf("[ERROR]: could not start openuem-agent service, reason: %v\n", err)
 			return
 		}
 
-		cfg.Section("Agent").Key("RestartRequired").SetValue("false")
-		if err := cfg.SaveTo(configFile); err != nil {
-			log.Printf("[ERROR]: could not save RestartRequired to INI")
-		}
-		log.Printf("[INFO]: the agent has been restarted due to watchdog")
-	} else {
-		if !IsAgentServiceRunning() {
-			// Create a backup of the agent's log before starting the service
-			if err := os.Rename("C:\\Program Files\\OpenUEM Agent\\logs\\openuem-log.txt", fmt.Sprintf("C:\\Program Files\\OpenUEM Agent\\logs\\openuem-log-%d.txt", time.Now().Unix())); err != nil {
-				log.Printf("[ERROR]: could not create a backup of the agent log")
+		// Reset the flag if needed and inform
+		if restartRequired {
+			cfg.Section("Agent").Key("RestartRequired").SetValue("false")
+			if err := cfg.SaveTo(configFile); err != nil {
+				log.Printf("[ERROR]: could not save RestartRequired to INI")
 			}
-
-			// Start service
-			if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
-				log.Printf("[ERROR]: could not start openuem-agent service, reason: %v\n", err)
-				return
-			}
+			log.Printf("[INFO]: the agent has been restarted due to watchdog")
+		} else {
 			log.Printf("[INFO]: the agent service was started as it wasn't running (fatal error?)")
 		}
 	}
 }
 
 func RestartService() error {
-	// Stop service
-	if err := openuem_utils.WindowsSvcControl("openuem-agent", svc.Stop, svc.Stopped); err != nil {
-		log.Printf("[ERROR]: could not stop openuem-agent service, reason: %v\n", err)
-		return err
-	}
 
 	// Start service
 	if err := openuem_utils.WindowsStartService("openuem-agent"); err != nil {
