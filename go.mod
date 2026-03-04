@@ -1,11 +1,11 @@
 module github.com/open-uem/openuem-agent-updater
 
-go 1.25.5
+go 1.26.0
 
 require (
 	github.com/go-co-op/gocron/v2 v2.17.0
 	github.com/nats-io/nats.go v1.47.0
-	github.com/open-uem/nats v0.0.0-20251220104614-efae26e98557
+	github.com/open-uem/nats v0.11.1-0.20260304125246-c9c6500711e7
 	github.com/open-uem/utils v0.0.0-20251221104611-c55d64529212
 	github.com/zcalusic/sysinfo v1.1.3
 	golang.org/x/sys v0.37.0
