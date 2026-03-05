@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +31,7 @@ type UpdaterService struct {
 	AgentCert              string
 	AgentKey               string
 	CACert                 string
+	WebsocketPort          string
 }
 
 func (us *UpdaterService) StartService() {
@@ -252,6 +254,15 @@ func (us *UpdaterService) ReadConfig() error {
 		return err
 	}
 	us.NATSServers = key.String()
+
+	key, err = cfg.Section("NATS").GetKey("WebSocketPort")
+	if err == nil {
+		if _, err := strconv.Atoi(key.String()); err != nil {
+			log.Println("[ERROR]: the WebSocket port is not valid")
+			return err
+		}
+		us.WebsocketPort = key.String()
+	}
 
 	// Read required certificates and private key either from config file or
 	// reading from the current directory
